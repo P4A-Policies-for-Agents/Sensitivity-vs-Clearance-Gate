@@ -1,0 +1,72 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Items API (C1 Sensitivity vs Clearance Gate Demo)",
+    "description": "A tiny mocked REST API used to demo the C1 Sensitivity vs Clearance Gate Flex Gateway policy. Provider: P4A Policies for Agents (https://github.com/P4A-Policies-for-Agents). The same GET /items/{id} endpoint returns content of very different sensitivity depending on id: blurb is a public product description; record is a customer record containing restricted personal data. The gateway policy classifies each RESPONSE and blocks it when it exceeds the caller's clearance — the mock itself does no authorization.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://www.a2d-ai.com/api/platform/<A2D_MOCK_SERVER_ID>/api",
+      "description": "A2D platform mock endpoint (published)"
+    }
+  ],
+  "paths": {
+    "/items/{id}": {
+      "get": {
+        "operationId": "getItem",
+        "summary": "Fetch an item by id",
+        "description": "Returns an item by id. blurb returns a public product blurb; record returns a customer record with restricted personal data. The gateway policy screens the RESPONSE against the caller's x-data-clearance header; this mock does no authorization.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["blurb", "record"] }
+          },
+          {
+            "name": "x-data-clearance",
+            "in": "header",
+            "required": false,
+            "description": "Caller clearance (public|internal|confidential|restricted). Read by the gateway policy, ignored by this mock.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The item.",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "blurb": {
+                    "summary": "Public product blurb (any caller may see it)",
+                    "value": {
+                      "id": "blurb",
+                      "kind": "product",
+                      "name": "AeroWhisk 3000 blender",
+                      "description": "Our flagship blender ships in three colours and whips soup smooth in 30 seconds. In stores now.",
+                      "price": "$79.00"
+                    }
+                  },
+                  "record": {
+                    "summary": "Customer record with restricted personal data",
+                    "value": {
+                      "id": "record",
+                      "kind": "customer_record",
+                      "name": "Jane A. Martinez",
+                      "email": "jane.martinez@example.com",
+                      "date_of_birth": "1987-03-14",
+                      "ssn": "512-45-6789",
+                      "medical_note": "Patient diagnosed with hypertension; prescribed lisinopril.",
+                      "account_number": "ACCT-99183422"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

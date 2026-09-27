@@ -1,0 +1,243 @@
+---
+apiVersion: gateway.mulesoft.com/v1alpha1
+kind: Extension
+metadata:
+  labels:
+    title: Sensitivity vs Clearance Gate
+    category: Compliance
+    description: >-
+      Classifies the sensitivity of a response with a typed Jev judge and
+      blocks it when it exceeds the caller's clearance. Clearance from a JWT
+      claim, header, or default; probability mass above clearance decides.
+      REST 403, LLM safe-reply, or flag.
+    metadata/capabilities/injectionPoint: outbound
+    metadata/capabilities/assetTypes: rest,http,mcp
+    metadata/interfaceScope: api,resource
+spec:
+  extends:
+    - name: extension-definition
+      namespace: default
+  properties:
+    # ── Operating mode (jev-policy-common) ──────────────────────────────────
+    mode:
+      type: string
+      enum: [enforce, shadow, off]
+      default: shadow
+      description: >-
+        enforce applies the decision (block/safe-reply/flag). shadow (default)
+        computes and logs but never mutates the response. off passes through
+        without calling the judge.
+    failMode:
+      type: string
+      enum: [open, closed]
+      default: open
+      description: >-
+        On a judge error or timeout, open passes the response through; closed
+        blocks it (insufficient_clearance). Recommend closed for routes whose
+        routeFloor is confidential or higher.
+    # ── Judge (jev-client) ──────────────────────────────────────────────────
+    jevProvider:
+      type: string
+      enum: [mock, typesafe, openai, openrouter, litellm, cloudflare, custom]
+      default: typesafe
+      description: >-
+        System-One judge provider. typesafe = TypeSafe Jev noul/choice/score API.
+        openai/openrouter/litellm/custom = an OpenAI-compatible chat endpoint
+        driven as a typed JSON judge. mock = deterministic in-policy judge for
+        tests and offline demos (requires allowMock: true).
+    jevService:
+      type: string
+      format: service
+      description: >-
+        Base URL of the judge provider (e.g. https://openrouter.ai or the
+        TypeSafe host). Required even for mock (any reachable URL); mock never
+        calls it.
+    jevPath:
+      type: string
+      description: Optional path override for the judge endpoint. Defaults per provider.
+    jevApiKey:
+      type: string
+      description: API key / bearer token for the judge provider. Not needed for mock.
+      "@context": { "@characteristics": [security:sensitive] }
+    jevModel:
+      type: string
+      default: "~typesafe/jev-latest"
+      description: >-
+        Judge model id. Defaults to the latest TypeSafe Jev model. For
+        OpenAI-compatible providers set your chat model. Ignored for cloudflare
+        and mock.
+    cloudflareAccountId:
+      type: string
+      description: Cloudflare account id (only when jevProvider is cloudflare).
+    customAuthHeader:
+      type: string
+      default: "Authorization"
+      description: Header carrying the credential when jevProvider is custom.
+    jevTimeoutMs:
+      type: integer
+      default: 600
+      minimum: 1
+      description: Per-call judge timeout (ms). Jev is typically 70-500 ms end to end.
+    maxStateTokens:
+      type: integer
+      default: 24000
+      minimum: 256
+      description: >-
+        Approximate token budget (chars/4) for the classified text sent to the
+        judge; longer text is truncated head+tail with a gateway marker.
+    minConfidence:
+      type: number
+      default: 0.6
+      minimum: 0
+      maximum: 1
+      description: Choice/score answers below this confidence are treated as uncertain.
+    # ── Header / logging conventions (jev-policy-common) ────────────────────
+    stripClientJevHeaders:
+      type: boolean
+      default: true
+      description: >-
+        Strip inbound x-jev-* headers from the client request so a client cannot
+        spoof a decision consumed by a later policy on the chain.
+    logStateSample:
+      type: boolean
+      default: false
+      description: >-
+        Log a short (truncated) sample of the classified text at debug level. Off
+        by default (it can contain personal data); the decision log otherwise
+        records only an FNV-1a fingerprint of the state.
+    sampleRate:
+      type: number
+      default: 1.0
+      minimum: 0
+      maximum: 1
+      description: Fraction of eligible responses actually classified (1.0 = all).
+    allowMock:
+      type: boolean
+      default: false
+      description: Permit jevProvider = mock. Guard so mock is never used unintentionally in production.
+    # ── Response selection ──────────────────────────────────────────────────
+    assetType:
+      type: string
+      enum: [mcp, rest, http, auto]
+      default: auto
+      description: >-
+        What kind of response to classify and how to act. rest/http classify a
+        JSON or text body (block = 403). mcp classifies a tools/call result. For
+        LLM chat routes use rest/http; a block becomes a schema-preserving safe
+        reply. auto detects MCP JSON-RPC by envelope, else rest/http.
+    routes:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Optional path-prefix allowlist of routes to classify (segment-boundary
+        match). Empty (default) classifies every matched response.
+    contentTypes:
+      type: array
+      items:
+        type: string
+      default: ["application/json", "text/"]
+      description: Response content-type prefixes eligible for classification.
+    jsonPaths:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Optional JSON pointer subset to classify instead of the whole body (e.g.
+        /data/notes). Empty classifies the whole body text.
+    # ── Clearance resolution ─────────────────────────────────────────────────
+    levels:
+      type: array
+      items:
+        type: string
+      default: [public, internal, confidential, restricted]
+      description: >-
+        Ordered sensitivity/clearance levels, least to most sensitive (3-6).
+        Level index is the ordinal used for the mass-above-clearance comparison.
+    levelDescriptions:
+      type: array
+      items:
+        type: string
+      default:
+        - "Public: safe for anyone, already published or harmless."
+        - "Internal: meant for employees; low harm if disclosed."
+        - "Confidential: personal data, customer data, contracts, non-public financials; disclosure causes real harm."
+        - "Restricted: credentials, health data, special-category personal data, or data under legal hold; disclosure causes severe harm."
+      description: >-
+        Descriptions aligned to levels (same length/order). Paste your own
+        classification scheme here; the judge scores against these.
+    clearanceClaim:
+      type: string
+      default: "data_clearance"
+      description: >-
+        JWT claim carrying the caller's clearance level. Read only from a token
+        an upstream JWT policy already validated, or (if trustUnverifiedClaims)
+        decoded without verification.
+    clearanceHeader:
+      type: string
+      default: "x-data-clearance"
+      description: Header carrying the caller's clearance (fallback after the JWT claim).
+    defaultClearance:
+      type: string
+      default: "internal"
+      description: Clearance used when neither the JWT claim nor the header is present.
+    trustUnverifiedClaims:
+      type: boolean
+      default: false
+      description: >-
+        Decode the JWT payload without verifying the signature to read the
+        clearance claim. Only enable when a JWT validation policy runs before
+        this one.
+    routeFloor:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Per-route minimum sensitivity applied without the judge, as
+        "pathPrefix=level" (e.g. /hr=confidential). A caller below that level is
+        blocked on those routes regardless of the classification.
+    personalDataMinClearance:
+      type: string
+      default: "confidential"
+      description: >-
+        When the judge finds personal data (probability >= 0.8), a caller below
+        this clearance is blocked.
+    # ── Decision bands + actions ─────────────────────────────────────────────
+    flagAt:
+      type: number
+      default: 0.3
+      minimum: 0
+      maximum: 1
+      description: Probability mass above the caller's clearance at or above which the response is flagged.
+    blockAt:
+      type: number
+      default: 0.6
+      minimum: 0
+      maximum: 1
+      description: Probability mass above the caller's clearance at or above which the response is blocked (must be >= flagAt).
+    safeReplyText:
+      type: string
+      default: "I can't share that information."
+      description: Replacement assistant text used when blocking an LLM chat response (schema preserved).
+    streamingMode:
+      type: string
+      enum: [skip, buffer]
+      default: skip
+      description: >-
+        For streamed (SSE) LLM responses, skip passes them through unclassified;
+        buffer holds the whole stream to classify it (adds latency).
+    maxBodyBytes:
+      type: integer
+      default: 1048576
+      minimum: 0
+      description: Response bodies larger than this (bytes) are not classified; onOversize decides what happens. Default 1 MiB.
+    onOversize:
+      type: string
+      enum: [skip, block]
+      default: skip
+      description: What to do when a response exceeds maxBodyBytes. skip passes through unclassified; block blocks.
+  required:
+    - jevService

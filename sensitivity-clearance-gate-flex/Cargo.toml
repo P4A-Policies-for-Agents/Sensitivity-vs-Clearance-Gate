@@ -1,0 +1,35 @@
+# Copyright 2026 Salesforce, Inc. All rights reserved.
+[package]
+name = "sensitivity_clearance_gate"
+version = "1.0.2"
+rust-version = "1.88.0"
+edition = "2018"
+resolver = "2"
+
+[package.metadata.anypoint]
+group_id = "030e0aac-30d9-460f-9234-428c16a123c4"
+definition_asset_id = { name = "sensitivity-clearance-gate", version = "1.0.2" }
+implementation_asset_id = "sensitivity-clearance-gate-flex"
+
+[dependencies]
+# enable_stop_iteration: this policy buffers the whole response body on the
+# response leg so it can classify it and (in enforce mode) replace it with a
+# 403 / safe-reply before it reaches the client. Holding the body while calling
+# the judge needs the stop-iteration capability.
+pdk = { version = "1.10.0", features = ["enable_stop_iteration"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+pdk-test = { version = "1.10.0" }
+httpmock = "0.6"
+reqwest = "0.11"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+lto = true
+opt-level = 'z'
+strip = "debuginfo"

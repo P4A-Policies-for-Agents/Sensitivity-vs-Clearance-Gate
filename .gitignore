@@ -1,0 +1,11 @@
+# Rust / wasm build artifacts
+target/
+**/target/
+*.wasm
+
+# Local-only demo credentials & endpoints — NEVER commit
+demo/config.json
+demo/env.local.sh
+
+# OS cruft
+.DS_Store

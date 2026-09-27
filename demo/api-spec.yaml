@@ -1,0 +1,51 @@
+openapi: 3.0.3
+info:
+  title: Items API (C1 demo mock)
+  version: 1.0.0
+  description: >-
+    A tiny mocked REST API for the Sensitivity vs Clearance Gate demo. The SAME
+    endpoint (`GET /items/{id}`) returns content of very different sensitivity
+    depending on the id: `blurb` is a public product description; `record` is a
+    customer record containing restricted personal data. The gateway policy
+    classifies each RESPONSE and blocks it when it exceeds the caller's clearance —
+    the mock itself does no authorization.
+paths:
+  /items/{id}:
+    get:
+      operationId: getItem
+      summary: Fetch an item by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, enum: [blurb, record] }
+        - name: x-data-clearance
+          in: header
+          required: false
+          description: Caller clearance (public|internal|confidential|restricted). Read by the gateway policy, ignored by this mock.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The item.
+          content:
+            application/json:
+              examples:
+                blurb:
+                  summary: Public product blurb (any caller may see it)
+                  value:
+                    id: blurb
+                    kind: product
+                    name: "AeroWhisk 3000 blender"
+                    description: "Our flagship blender ships in three colours and whips soup smooth in 30 seconds. In stores now."
+                    price: "$79.00"
+                record:
+                  summary: Customer record with restricted personal data
+                  value:
+                    id: record
+                    kind: customer_record
+                    name: "Jane A. Martinez"
+                    email: "jane.martinez@example.com"
+                    date_of_birth: "1987-03-14"
+                    ssn: "512-45-6789"
+                    medical_note: "Patient diagnosed with hypertension; prescribed lisinopril."
+                    account_number: "ACCT-99183422"

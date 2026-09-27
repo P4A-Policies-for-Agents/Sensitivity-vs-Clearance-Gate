@@ -1,0 +1,27 @@
+{
+  "//": "C1 Sensitivity vs Clearance Gate — offline demo config (deterministic MOCK judge, no creds).",
+  "//mode": "enforce applies the decision; use shadow to observe without mutating.",
+  "mode": "enforce",
+  "failMode": "closed",
+
+  "//judge": "mock is fully in-policy and calls nothing; allowMock must be true to permit it.",
+  "jevProvider": "mock",
+  "allowMock": true,
+  "jevService": "https://example.invalid",
+
+  "//to-use-a-real-judge": "set jevProvider typesafe + jevService https://openrouter.ai + jevModel ~typesafe/jev-latest + jevApiKey <OPENROUTER_KEY-in-demo/config.json-ONLY-never-commit>",
+
+  "assetType": "rest",
+  "routes": ["/items"],
+
+  "levels": ["public", "internal", "confidential", "restricted"],
+  "clearanceHeader": "x-data-clearance",
+  "defaultClearance": "internal",
+  "personalDataMinClearance": "confidential",
+
+  "flagAt": 0.3,
+  "blockAt": 0.6,
+
+  "//routeFloor-example": "['/items/records=confidential'] would block any caller below confidential on that path without calling the judge",
+  "trustUnverifiedClaims": false
+}
